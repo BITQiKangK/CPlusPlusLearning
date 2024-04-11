@@ -2803,7 +2803,181 @@ In modern C++, use of the `static` keyword for giving identifiers internal linka
 
 ### 7.7 External linkage and variable forward declarations
 
+An identifier with **external linkage** can be seen and used both from the file in which it is defined, and from other code files (via a forward declaration).
 
+**Functions have external linkage by default**
+
+**Global variables with external linkage**
+
+Global variables with external linkage are sometimes called **external variables**. To make a global variable external (and thus accessible by other files), we can use the `extern` keyword to do so:
+
+```c++
+int g_x { 2 }; // non-constant globals are external by default
+
+extern const int g_y { 3 }; // const globals can be defined as extern, making them external
+extern constexpr int g_z { 3 }; // constexpr globals can be defined as extern, making them external (but this is pretty useless, see the warning in the next section)
+
+int main()
+{
+    return 0;
+}
+```
+
+Non-const global variables are external by default (if used, the `extern` keyword will be ignored).
+
+**Variable forward declarations via the extern keyword**
+
+To actually use an external global variable that has been defined in another file, you also must place a `forward declaration` for the global variable in any other files wishing to use the variable. For variables, creating a forward declaration is also done via the `extern` keyword (with no initialization value).
+
+An example:
+
+a.cpp
+
+```c++
+// global variable definitions
+int g_x { 2 }; // non-constant globals have external linkage by default
+extern const int g_y { 3 }; // this extern gives g_y external linkage
+```
+
+main.cpp
+
+```c++
+#include <iostream>
+
+extern int g_x; // this extern is a forward declaration of a variable named g_x that is defined somewhere else
+extern const int g_y; // this extern is a forward declaration of a const variable named g_y that is defined somewhere else
+
+int main()
+{
+    std::cout << g_x << ' ' << g_y << '\n'; // prints 2 3
+
+    return 0;
+}
+```
+
+==Note:== 
+
+1. If you want to define an uninitialized non-const global variable, do not use the extern keyword, otherwise C++ will think you're trying to make a forward declaration for the variable.
+2. Although constexpr variables can be given external linkage via the `extern` keyword, they can not be forward declared as constexpr. This is because the compiler needs to know the value of the constexpr variable (at compile time). If that value is defined in some other file, the compiler  has no visibility on what value was defined in that other file. However, you can forward declare a constexpr variable as const, which the compiler will treat as a runtime const.
+
+**Summary**
+
+```c++
+// External global variable definitions:
+int g_x;                       // defines non-initialized external global variable (zero initialized by default)
+extern const int g_x{ 1 };     // defines initialized const external global variable
+extern constexpr int g_x{ 2 }; // defines initialized constexpr external global variable
+
+// Forward declarations
+extern int g_y;                // forward declaration for non-constant global variable
+extern const int g_y;          // forward declaration for const global variable
+extern constexpr int g_y;      // not allowed: constexpr variables can't be forward declared
+```
+
+
+
+### 7.8 Why (non-const) global variables are evil
+
+**The reasons**
+
+1. Global variables make the program's state unpredictable.
+
+    Every function call becomes potentially dangerous, and the programmer has no easy way of knowing which ones are dangerous and which ones aren't. Local variables are much safer because other functions can not affect them directly.
+
+2. Global variables also make your program less modular and less flexible.
+
+   A function that utilizes nothing but its parameters and has no side effects is perfectly modular. Modularity helps both in understanding what a program does, as well as with reusability. Global variables reduce modularity significantly.
+
+In particluar, avoid using global variables for important "decision-point" variables.
+
+**The initialization order problem of global variables**
+
+Initialization of static variables (which includes global variables) happens as part of program startup, before execution of the `main` function. This proceeds in two phases:
+
+1. `static initialization`: In the static initialization phase, global variables with constexpr initializers (including literals) are initialized to those values. Also, global variables without initializers are zero-initialized.
+2. `dynamic initialization`: Global variables with non-constexpr initializers are initialized.
+
+Within a single file, for each phase, global variables are generally initialized in order of definition. Given this, you need to be careful not to have variables dependent on the initialization value of other variables that won't be initialized until later.
+
+An example:
+
+```c++
+#include <iostream>
+
+int initX();  // forward declaration
+int initY();  // forward declaration
+
+int g_x{ initX() }; // g_x is initialized first
+int g_y{ initY() };
+
+int initX()
+{
+    return g_y; // g_y isn't initialized when this is called
+}
+
+int initY()
+{
+    return 5;
+}
+
+int main()
+{
+    std::cout << g_x << ' ' << g_y << '\n';
+}
+```
+
+Any use of a global variable should meet at least the following two criteria:
+
+1. There should only ever be one of the thing the variable represents in your program.
+2. And its use should be ubiquitous throughout your program.
+
+**Some advice**
+
+1. Prefix all non-namespaced global variables with "g" or "g_", or better yet, put them in a namespace, to reduce the chance of naming collisions.
+
+2. Instead of allowing direct access to the global variable, it's a better practice to "encapsulate" the variable.
+
+   Make sure the variable can only be accessed from within the file it's declared in, e.g. by making the variable static or const, then provide external global "access functions" to work with the variable.
+
+3. When writing an otherwise standalone function that uses the global variable, don't use the variable directly in your function body. Pass it in as an argument instead.
+
+
+
+### 7.9 Sharing global constants across multiple files (using inline variables)
+
+**Global constants as internal variables**
+
+Prior to C++17
+
+**Global constants as external variables**
+
+
+
+
+
+### 7.10 Static local variables
+
+
+
+
+
+### 7.11 Scope, duration, and linkage summary
+
+**Scope summary**
+
+An identifiers's *scope* determines where the identifier can be accessed within the source code.
+
+
+
+
+
+
+
+### 7.12 Using declarations and using directives
+
+
+
+### 7.13 Unnamed and inline namespaces
 
 
 
@@ -2812,6 +2986,1449 @@ In modern C++, use of the `static` keyword for giving identifiers internal linka
 
 
 ## 8. Contorl Flow
+
+
+
+
+
+## 10. Type Conversion, Type Aliases, and Type Deduction
+
+### 10.1 Implicit type conversion
+
+**Introduction to type conversion**
+
+The value of an object is stored as a sequence of bits, and the data type of the object tells the compiler how to interpret those bits into meaningful values.
+
+Different data types may represent the "same" number differently. The integer value `3` might be stored as binary `0000 0000 0000 0000 0000 0000 0000 0011`, whereas floating point value `3.0` might be stored as binary `0100 0000 0100 0000 0000 0000 0000 0000`.
+
+When we do this:
+
+```c++
+float f{ 3 }; // initialize floating point variable with int 3
+```
+
+In such a case, the compiler can't just copy the bits representing the `int` value `3` into the memory allocated for `float` variable `f`. Instead, it needs to convert the integer value `3` to the equivalent floating point value `3.0`, which can then be stored in the memory allocated for `f`.
+
+The process of producing a new value of some type from a value of a different type is called a `conversion`.
+
+Type conversion can be invoked in one of two ways: either **implicitly** (as needed by the compiler), or **explicitly** (when requested by the programmer).
+
+**Implicit type conversion**
+
+**Implicit type conversion** (also called **automatic type conversion** or **coercion**) is performed automatically by the compiler when one data type is required, but a different data type is supplied
+
+**What happens when a type conversion is invoked**
+
+When a type conversion is invoked (whether implicitly or explicitly), the compiler will determine whether it can convert the value from the current type to the desired type.
+
+
+
+
+
+## 11. Function Overloading and Function Templates
+
+### 11.1 Introduction to function overloading
+
+**Function overloading** allows us to create multiple functions with the same name, so long as each individually named function has different parameter types (or the functions can be otherwise differentiated).
+
+An example:
+
+```c++
+int add(int x, int y) // integer version
+{
+    return x + y;
+}
+
+double add(double x, double y) // floating point version
+{
+    return x + y;
+}
+
+int main()
+{
+    return 0;
+}
+```
+
+**Introduction to overload resolution**
+
+When a function call is made to a function that has been overloaded, the compiler will try to match the function call to the appropriate overload based on the arguments used in the function call. This is called **overload resolution**.
+
+**Making it compile**
+
+In order for a program using overloaded functions to compile, two things have to be true:
+
+1. Each overloaded function has to be differentiated from the others.
+2. Each call to an overloaded function has to resolve to an overloaded function.
+
+If an overloaded function is not differentiated, or if a function all to an overloaded function can not be resolved to an overloaded function, then a compile error will result.
+
+
+
+### 11.2 Function overload differentiation
+
+**How overloaded functions are differentiated**
+
+| Function property    | Used for differentiation | Notes                                                        |
+| -------------------- | ------------------------ | ------------------------------------------------------------ |
+| Number of parameters | Yes                      |                                                              |
+| Type of parameters   | Yes                      | Excludes typedefs, type aliases, and const qualifier on value parameters. Include ellipses. |
+| Return type          | No                       |                                                              |
+
+**Overloading based on number of parameters**
+
+An overloaded function is differentiated so along as each overloaded function has a different number of parameters.
+
+An example:
+
+```c++
+int add(int x, int y)
+{
+    return x + y;
+}
+
+int add(int x, int y, int z)
+{
+    return x + y + z;
+}
+```
+
+**Overloading based on type of parameters**
+
+
+
+
+
+## 12. Compound Types: References and Pointers
+
+### 12.1 Introduction to compound data types
+
+**Compound data types**
+
+**Compound data types** (also sometimes called **composite data types**) are data types that can be constructed from fundamental data types (or other compound data types).
+
+C++ supports the following compound types:
+
+- Functions
+
+- Arrays
+
+- Pointer types:
+
+  - Pointer to object
+  - Pointer to function
+
+- Pointer to member types:
+
+  - Pointer to data member
+  - Pointer to member function
+
+- Referece types:
+
+  - L-value references
+  - R-value references
+
+- Enumerated types:
+
+  - Unscoped enumerations
+  - Scoped enumerations
+
+- Class types:
+
+  - Structs
+  - Classes
+  - Unions
+
+  
+
+### 12.2 Value categories (lvalues and rvalues)
+
+**The properties of an expression**
+
+To help determine how expressions should evaluate and where they can be used, all expressions in C++ have two properties: a **type** and a **value category**.
+
+**The type of an expression**
+
+The type of an expression is equivalent to the type of the value, object, or function that results from the evaluated expression.
+
+An example:
+
+```c++
+int main()
+{
+    auto v1 { 12 / 4 }; // int / int => int
+    auto v2 { 12.0 / 4 }; // double / int => double
+
+    return 0;
+}
+```
+
+The compiler can use the type of an expression to determine whether an expression is valid in a given context. For example:
+
+```c++
+#include <iostream>
+
+void print(int x)
+{
+    std::cout << x << '\n';
+}
+
+int main()
+{
+    print("foo"); // error: print() was expecting an int argument, we tried to pass in a string literal
+
+    return 0;
+}
+```
+
+Note that the type of an expression must be determinable at compile time (other type checking and type deduction wouldn't work) -- however, the value of an expression may be determined at either compile time (if the expression is constexpr) or runtime (if the expression is not constexpr).
+
+**The value category of an expression**
+
+Consider the following program:
+
+```c++
+int main()
+{
+    int x{};
+
+    x = 5; // valid: we can assign 5 to x
+    5 = x; // error: can not assign value of x to literal value 5
+
+    return 0;
+}
+```
+
+The **value category** of an expression (or subexpression) indicates whether an expression resolves to a value, a function, or an object of some kind.
+
+Prior to C++11, there were only two possible value categories: `lvalue` and `rvalue`.
+
+In C++11, three additional value categories (`gvalue`, `prvalue`, and `xvalue`) were added to support a new feature called `move semantics`.
+
+**Lvalue and rvalue expressions**
+
+An **lvalue** is an expression that evaluates to an identifiable object or function (or bit-field).
+
+Since the introduction of constants into the language, lvalues come in two subtypes:
+
+1. **Modifiable lvalue**: Lvalue whose value can be modified.
+2. **Non-modifiable lvalue**: Lvalue whose value can't be modified (because the lvalue is const or constexpr).
+
+An **rvalue** is an expression that is not an lvalue. Rvalue expressions evaluate to a value. Commonly seen rvalues include **literals** (except C-style string literals, which are lvalues) and **the return value of functions** and **operators that return by value**.
+
+Rvalues aren't identifiable (meaning they have to be used immediately), and only exist within the scope of the expression in which they are used.
+
+An assignment operation requires the left operand of the assignment to be a modifiable lvalue expression, and the right operand to be an rvalue expression.
+
+==Tip==
+
+`operator&` requires its operand to be an lvalue. If `&(expression);` compiles, `expression` must be an lvalue:
+
+```c++
+int foo()
+{
+    return 5;
+}
+
+int main()
+{
+    int x { 5 };
+    &x; // compiles: x is an lvalue expression
+    &5; // doesn't compile: 5 is an rvalue expression
+    &foo(); // doesn't compile: foo() is an rvalue expression
+}
+```
+
+A C-style string literal is an lvalue because C-style strings (which are C-style arrays) decay to a pointer. The decay process only works if the array is an lvalue (and thus has an address that can be stored in the pointer).
+
+**Lvalue to rvalue conversion**
+
+Look at this example:
+
+```c++
+int main()
+{
+    int x { 5 };
+    int y { x }; // x is an lvalue expression
+
+    return 0;
+}
+```
+
+Lvalue expressions will implicitly convert to rvalue expressions in contexts where an rvalue is expected but an lvalue is provided.
+
+
+
+### 12.3 Lvalue references
+
+In C++, a **reference** is an alias for an existing object. Once a reference has been defined, any operation on the reference is applied to the object being referenced.
+
+Modern C++ contains two types of references: `lvalue references`, and `rvalue references`.
+
+**Lvalue reference types**
+
+An **lvalue reference** (commonly just called a `reference` since prior to C++11 there was only one type of reference) acts as an alias for an existing lvalue (such as a variable).
+
+To declare an lvalue reference type, we use an ampersand (&) in the type declaration:
+
+```c++
+int      // a normal int type
+int&     // an lvalue reference to an int object
+double&  // an lvalue reference to a double object
+```
+
+**Lvalue reference variables**
+
+An **lvalue reference variable** is a variable that acts as a reference to an lvalue (usually another variable).
+
+To create an lvalue reference variable, we simply define a varable with an lvalue reference type:
+
+```c++
+#include <iostream>
+
+int main()
+{
+    int x { 5 };    // x is a normal integer variable
+    int& ref { x }; // ref is an lvalue reference variable that can now be used as an alias for variable x
+
+    std::cout << x << '\n';  // print the value of x (5)
+    std::cout << ref << '\n'; // print the value of x via ref (5)
+
+    return 0;
+}
+```
+
+**Modifying values through an lvalue reference**
+
+We can also use a reference to modify the value of the object being referenced:
+
+```c++
+#include <iostream>
+
+int main()
+{
+    int x { 5 }; // normal integer variable
+    int& ref { x }; // ref is now an alias for variable x
+
+    std::cout << x << ref << '\n'; // print 55
+
+    x = 6; // x now has value 6
+
+    std::cout << x << ref << '\n'; // prints 66
+
+    ref = 7; // the object being referenced (x) now has value 7
+
+    std::cout << x << ref << '\n'; // prints 77
+
+    return 0;
+}
+```
+
+**Initialization of lvalue references**
+
+Much like constants, all references must be initialized.
+
+```c++
+int main()
+{
+    int& invalidRef;   // error: references must be initialized
+
+    int x { 5 };
+    int& ref { x }; // okay: reference to int is bound to int variable
+
+    return 0;
+}
+```
+
+When a reference is initialized with an object (or function), we say it is **bound** to that object (or function). 
+
+The process by which such a reference is bound is called **reference binding**. 
+
+The object (or function) being referenced is sometimes called **referent**.
+
+Lvalue references must be bound to a *modifiable* lvalue.
+
+```c++
+int main()
+{
+    int x { 5 };
+    int& ref { x }; // valid: lvalue reference bound to a modifiable lvalue
+
+    const int y { 5 };
+    int& invalidRef { y };  // invalid: can't bind to a non-modifiable lvalue
+    int& invalidRef2 { 0 }; // invalid: can't bind to an rvalue
+
+    return 0;
+}
+```
+
+Lvalue references **cant't** be bound to non-modifiable lvalues or rvalues (otherwise you'd be able to change those values through the refernece, which could be a violation of their const-ness).
+
+For this reason, lvalue references are occasionally called **lvalue references to non-const** (sometimes shortened to **non-const reference**).
+
+In most cases, the type of the reference must match the type of the referent.
+
+```c++
+int main()
+{
+    int x { 5 };
+    int& ref { x }; // okay: reference to int is bound to int variable
+
+    double y { 6.0 };
+    int& invalidRef { y }; // invalid; reference to int cannot bind to double variable
+    double& invalidRef2 { x }; // invalid: reference to double cannot bind to int variable
+
+    return 0;
+}
+```
+
+**References can't be reseated (changed to refer to another object)**
+
+Once initialized, a reference in C++ cannot be **reseated**, meaning it cannot be changed to reference another object.
+
+```c++
+#include <iostream>
+
+int main()
+{
+    int x { 5 };
+    int y { 6 };
+
+    int& ref { x }; // ref is now an alias for x
+
+    ref = y; // assigns 6 (the value of y) to x (the object being referenced by ref)
+    // The above line does NOT change ref into a reference to variable y!
+
+    std::cout << x << '\n'; // user is expecting this to print 5, whereas it prints 6
+
+    return 0;
+}
+```
+
+When a reference is evaluated in an expression, it resolves to the object it's referencing. 
+
+So `ref = y` doesn't change `ref` to new reference `y`. Rather, because `ref` is an alias for `x`, the expression evaluates as if it was written `x = y`.
+
+**Lvalue reference scope and duration**
+
+Reference variables follow the same scoping and duration rules that normal variables do:
+
+```c++
+#include <iostream>
+
+int main()
+{
+    int x { 5 }; // normal integer
+    int& ref { x }; // reference to variable value
+
+     return 0;
+} // x and ref die here
+```
+
+**References and referents have independent lifetimes**
+
+With one exception, the lifetime of a reference and the lifetime of its referent are independent. In other words, both of the following are true:
+
+- A reference can be destroyed before the object it is referencing.
+- The object being referenced can be destroyed the reference.
+
+When a reference is destroyed before the referent, the referent is not impacted. For example:
+
+```c++
+#include <iostream>
+
+int main()
+{
+    int x { 5 };
+
+    {
+        int& ref { x };   // ref is a reference to x
+        std::cout << ref << '\n'; // prints value of ref (5)
+    } // ref is destroyed here -- x is unaware of this
+
+    std::cout << x << '\n'; // prints value of x (5)
+
+    return 0;
+} // x destroyed here
+```
+
+Results:
+
+```
+5
+5
+```
+
+**Dangling references**
+
+When an object being referenced is destroyed before a reference to it, the reference is left referencing an object that no longer exists. Such a reference is called **dangling reference**.
+
+Accessing a dangling reference leads to undefined behavior.
+
+**References aren't objects**
+
+References are not objects in C++. A reference is not required to exist or occupy storage.
+
+If possible, the compiler will optimize references away by replacing all occurrences of a reference with the referent. However, this isn't always possible, and in such cases, references may require storage.
+
+Because references aren't objects, they can't be used anywhere an object is required (e.g. you can't have a reference to a reference, since an lvalue reference must reference an identifiable object).
+
+In cases where you need a reference that is an object or a reference that can be reseated, `std::reference_wrapper` provides a solution.
+
+Considering the following variables:
+
+```c++
+int var{};
+int& ref1{ var };  // an lvalue reference bound to var
+int& ref2{ ref1 }; // an lvalue reference bound to var
+```
+
+Because `ref1` is a reference to `var`, when used in an expression, `ref1` evaluates to `var`. So `ref2` is just a normal lvalue reference (as indicated by its type `int&`), bound to `var`.
+
+A reference to a reference would have syntax `int&&` -- but since C++ doesn't support references to references, this syntax was repurposed in C++11 to indicate an rvalue.
+
+
+
+### 12.4 Lvalue references to const
+
+**Lvalue reference to const**
+
+By using `const` keyword when declaring an lvalue reference, we tell an lvalue reference to treat the object it is referencing as const.
+
+Such a reference is called an **lvalue reference to a const value** (sometimes called a **reference to const** or a **const reference**).
+
+Because lvalue references to const treat the object they are referencing as const, they can be used to access but not modify the value being referenced:
+
+```c++
+#include <iostream>
+
+int main()
+{
+    const int x { 5 };    // x is a non-modifiable lvalue
+    const int& ref { x }; // okay: ref is a an lvalue reference to a const value
+
+    std::cout << ref << '\n'; // okay: we can access the const object
+    ref = 6;                  // error: we can not modify an object through a const reference
+
+    return 0;
+}
+```
+
+**Initializing an lvalue reference to const with a modifiable lvalue**
+
+Lvalue references to const can also bind to modifiable lvalues. In such a case, the object being referenced is treated as const when accessed through the reference (even though the underlying object is non-const):
+
+```c++
+#include <iostream>
+
+int main()
+{
+    int x { 5 };          // x is a modifiable lvalue
+    const int& ref { x }; // okay: we can bind a const reference to a modifiable lvalue
+
+    std::cout << ref << '\n'; // okay: we can access the object through our const reference
+    ref = 7;                  // error: we can not modify an object through a const reference
+
+    x = 6;                // okay: x is a modifiable lvalue, we can still modify it through the original identifier
+
+    return 0;
+}
+```
+
+**Initializing an lvalue reference to const with an rvalue**
+
+Lvalues references to const can also bind to rvalues:
+
+```c++
+#include <iostream>
+
+int main()
+{
+    const int& ref { 5 }; // okay: 5 is an rvalue
+
+    std::cout << ref << '\n'; // prints 5
+
+    return 0;
+}
+```
+
+When this happens, a temporary object is created and initialized with the rvalue, and the reference to const is bound to that temporary object.
+
+**Initializing an lvalue reference to const with a value of a different type**
+
+Lvalue references to const can even bind to values of a different type, so long as those values can be implicitly converted to the reference type:
+
+```c++
+#include <iostream>
+
+int main()
+{
+    // case 1
+    const double& r1 { 5 };  // temporary double initialized with value 5, r1 binds to temporary
+
+    std::cout << r1 << '\n'; // prints 5
+
+    // case 2
+    char c { 'a' };
+    const int& r2 { c };     // temporary int initialized with value 'a', r2 binds to temporary
+
+    std::cout << r2 << '\n'; // prints 97 (since r2 is a reference to int)
+
+    return 0;
+}
+```
+
+**Const references bound to temporary objects extend the lifetime of the temporary object**
+
+Temporary objects are normally destroyed at the end of the expression in which they are created. 
+
+To avoid dangling references in such cases, C++ has a special rule: When a const lvalue reference is *directly* bound to a temporary object, the lifetime of the temporary object is extended to match the lifetime of the reference.
+
+```c++
+#include <iostream>
+
+int main()
+{
+    const int& ref { 5 }; // The temporary object holding value 5 has its lifetime extended to match ref
+
+    std::cout << ref << '\n'; // Therefore, we can safely use it here
+
+    return 0;
+} // Both ref and the temporary object die here
+```
+
+Lifetime extension only works when a const reference is directly bound to temporary. Temporaries returned from a function (even ones returned by const reference) are not elligible for lifetime extension.
+
+**Constexpr lvalue references**
+
+When applied to a reference, `constexpr` allows the reference to be used in a constant expression.
+
+Constexpr references hava a particular limitation: they can only be bound to objects with static duration (either globals or static locals). This is because the compiler knows where static objects will be instantiated in memory, so it can treat that address as a compile-time constant.
+
+```c++
+int g_x { 5 };
+
+int main()
+{
+    [[maybe_unused]] constexpr int& ref1 { g_x }; // ok, can bind to global
+
+    static int s_x { 6 };
+    [[maybe_unused]] constexpr int& ref2 { s_x }; // ok, can bind to static local
+
+    int x { 6 };
+    [[maybe_unused]] constexpr int& ref3 { x }; // compile error: can't bind to non-static object
+
+    return 0;
+}
+```
+
+When defining a constexpr reference to a const variable, we need to apply both `cosntexpr` (which applies to the reference) and `const` (which applies to the type being referenced).
+
+```c++
+int main()
+{
+    static const int s_x { 6 }; // a const int
+    [[maybe_unused]] constexpr const int& ref2 { s_x }; // needs both constexpr and const
+
+    return 0;
+}
+```
+
+
+
+### 12.5 Pass by lvalue reference
+
+**Pass by reference**
+
+One way to avoid making an expensive copy of an argument when calling a function is to use `pass by reference` instead of `pass by value`.
+
+When using **pass by reference**, we declare a function parameter as a reference type (or const reference type) rather than as a normal type. 
+
+When the function is called, each reference parameter is bound to the appropriate argument. Because the reference acts as an alias for the argument, no copy of the argument is made.
+
+**Pass by reference allows us to change the value of an argument**
+
+A reference acts identically to the object being referenced, when using pass by reference, any changes made to the reference parameter *will* affect the argument:
+
+```c++
+#include <iostream>
+
+void addOne(int& y) // y is bound to the actual object x
+{
+    ++y; // this modifies the actual object x
+}
+
+int main()
+{
+    int x { 5 };
+
+    std::cout << "value = " << x << '\n';
+
+    addOne(x);
+
+    std::cout << "value = " << x << '\n'; // x has been modified
+
+    return 0;
+}
+```
+
+Outputs:
+
+```c++
+value = 5
+value = 6
+```
+
+**Pass by reference can only accept modifiable lvalue arguments**
+
+Because a reference to a non-const value can only bind to a modifiable lvalue (essentially a non-const variable), this means that pass by reference only works with arguments that are modifiable lvalues.
+
+```c++
+#include <iostream>
+
+void printValue(int& y) // y only accepts modifiable lvalues
+{
+    std::cout << y << '\n';
+}
+
+int main()
+{
+    int x { 5 };
+    printValue(x); // ok: x is a modifiable lvalue
+
+    const int z { 5 };
+    printValue(z); // error: z is a non-modifiable lvalue
+
+    printValue(5); // error: 5 is an rvalue
+
+    return 0;
+}
+```
+
+
+
+### 12.6 Pass by const lvalue reference
+
+Unlike a reference to non-const (which can only bind to modifiable ivalues), a reference to const can bind to modifiable lvalues, non-modifiable lvalues, and rvalues.
+
+```c++
+#include <iostream>
+
+void printRef(const int& y) // y is a const reference
+{
+    std::cout << y << '\n';
+}
+
+int main()
+{
+    int x { 5 };
+    printRef(x);   // ok: x is a modifiable lvalue, y binds to x
+
+    const int z { 5 };
+    printRef(z);   // ok: z is a non-modifiable lvalue, y binds to z
+
+    printRef(5);   // ok: 5 is rvalue literal, y binds to temporary int object
+
+    return 0;
+}
+```
+
+Passing by const reference offers the same primary benefit as pass by reference (avoiding making a copy of the argument), while also guaranteeing that function can *not* change the value being referenced.
+
+**Passing values of a different type to a const lvalue reference parameter**
+
+A const lvalue reference can bind to an value of a different type, as long as that value is convertable to the type of the reference.
+
+The primary motivation for allowing this is so that we can pass a value as an argument to either a value parameter or a const reference parameter in exactly the same way.
+
+```c++
+#include <iostream>
+
+void printVal(double d)
+{
+    std::cout << d << '\n';
+}
+
+void printRef(const double& d)
+{
+    std::cout << d << '\n';
+}
+
+int main()
+{
+    printVal(5); // 5 converted to temporary double, copied to parameter d
+    printRef(5); // 5 converted to temporary double, bound to parameter d
+
+    return 0;
+}
+```
+
+**When to pass by (const) reference**
+
+Because class types can be expensive to copy (sometimes significantly so):
+
+- Class types are usually passed by const reference instead of by value to avoid making an expensive copy of the argument.
+- Fundamental types are cheap to copy, so they are typically passed by value.
+
+**The cost of pass by value vs pass by reference**
+
+There are two key points that will help us understand when we should pass by value vs pass by reference:
+
+**First**, the cost of copying an object is generally proportional to two things:
+
+- The size of the object. Objects that use more memory take more time to copy.
+- Any additional setup costs. Some class types do additional setup when they are instantiated (e.g. such as opening a file or database, or allocating a certain amount of dynamic memory to hold an object of a variable size). These setup costs must be paid each time an object is copied.
+
+On the other hand, binding a reference to an object is always fast (about the same speed as copying a fundamental type).
+
+**Second**, accessing an object through a reference is slightly more expensive than accessing an object through a normal variable identifier.
+
+With a reference, there usually is an extra step: the program must first access the reference to determine which object is being referenced, and only then can it go to that memory address for that object and access the value.
+
+The compiler can also sometimes optimize code using objects passed by value more highly than code using objects passed by reference. This means code generated to access objects passed by reference is typically slower than the code generaged for objects passed by value.
+
+**Why we dont't pass everything by reference**
+
+- For objects that are cheap to copy, the cost of copying is similar to the cost of binding, so we favor pass by value so the code generated will be faster.
+- For objects that are expensive to copy, the cost of the copy dominates, so we favor pass by (const) reference to avoid making a copy.
+
+**For function parameters, prefer `std::string_view` over `const std::string&` in most cases**
+
+Im most cases, `std::string_view` is the better choice, as it can handle a wider range of argument types efficiently.
+
+There are a few cases where using a `const std::string&` parameter may be more appropirate:
+
+- If you're using C++14 or older, `std::string_view` isn't available
+- If your function needs to call some other function that takes a C-style or `std::string` parameter, then `const std::string&` may be a better choice, as `std::string_view` is not guaranteed to be null-terminated (something that C-style string functions expect) and does not efficiently convert back to a `std::string`.
+
+
+
+### 12.7 Introduction to pointers
+
+**The address-of operator (&)**
+
+The **address-of operator (&)** returns the memory address of its operand.
+
+An example:
+
+```c++
+#include <iostream>
+
+int main()
+{
+    int x{ 5 };
+    std::cout << x << '\n';  // print the value of variable x
+    std::cout << &x << '\n'; // print the memory address of variable x
+
+    return 0;
+}
+```
+
+Outputs:
+
+```
+5
+0027FEA0
+```
+
+**The dereference operator (*)**
+
+The **dereference operator (*)** (also occassionally called the **indirection operator**) returns the value at a given memory address as an lvalue:
+
+```c++
+#include <iostream>
+
+int main()
+{
+    int x{ 5 };
+    std::cout << x << '\n';  // print the value of variable x
+    std::cout << &x << '\n'; // print the memory address of variable x
+
+    std::cout << *(&x) << '\n'; // print the value at the memory address of variable x (parentheses not required, but make it easier to read)
+
+    return 0;
+}
+```
+
+**Pointers**
+
+A **pointer** is an object that holds a *memory address* (typically of another variable) as its value.
+
+In modern C++, the pointers we are talking about here are sometimes called "raw pointers" or "dumb pointers", to help differentiate them from "smart pointers".
+
+**Pointer initialization**
+
+Like normal variables, pointers are *not* initialized by default.
+
+A pointer that has not been initialized is sometimes called a **wild pointer**. Wild pointers contain a garbage address, and dereferencing a wild pointer will result in undefined behavior. Because of this, you should always initialize your pointers to a known value.
+
+Once we have a pointer holding the address of another object, we can then use the dereference operator (*) to access the value at that address. For example:
+
+```c++
+#include <iostream>
+
+int main()
+{
+    int x{ 5 };
+    std::cout << x << '\n'; // print the value of variable x
+
+    int* ptr{ &x }; // ptr holds the address of x
+    std::cout << *ptr << '\n'; // use dereference operator to print the value at the address that ptr is holding (which is x's address)
+
+    return 0;
+}
+```
+
+The type of the pointer has to match the type of the object being pointed to:
+
+```c++
+int main()
+{
+    int i{ 5 };
+    double d{ 7.0 };
+
+    int* iPtr{ &i };     // ok: a pointer to an int can point to an int object
+    int* iPtr2 { &d };   // not okay: a pointer to an int can't point to a double object
+    double* dPtr{ &d };  // ok: a pointer to a double can point to a double object
+    double* dPtr2{ &i }; // not okay: a pointer to a double can't point to an int object
+
+    return 0;
+}
+```
+
+With one exception, initializing a pointer with a literal value is disallowed:
+
+```c++
+int* ptr{ 5 }; // not okay
+int* ptr{ 0x0012FF7C }; // not okay, 0x0012FF7C is treated as an integer literal
+```
+
+**Pointers and assignment**
+
+We can use assignment with pointers in two different ways:
+
+1. To change what the pointer is pointing at (by assigning the pointer a new address)
+2. To change the value being pointed at (by assigning the dereferenced pointer a new value)
+
+**Differences between pointers and references**
+
+| references                                        | pointers                         |
+| ------------------------------------------------- | -------------------------------- |
+| the address-of and dereference happens implicitly | happens explicitly               |
+| must be initialized                               | are not required (but should be) |
+| are not objects                                   | are objects                      |
+| can not be reseated                               | can be reseated                  |
+| must always be bound to an object                 | can point to nothing             |
+| are "safe" (outside of dangling references)       | are inherently dangerous         |
+
+**The address-of operator returns a pointer**
+
+The address-of operator (&) doesn't return the address of its operand as a literal. Instead, it returns a pointer containing the address of the operand, whose type is derived from the argument (e.g. taking the address of an `int` will return the address in an `int` pointer).
+
+```c++
+#include <iostream>
+#include <typeinfo>
+
+int main()
+{
+	int x{ 4 };
+	std::cout << typeid(&x).name() << '\n'; // print the type of &x
+
+	return 0;
+}
+```
+
+On Visual Studio, this printed:
+
+```
+int *
+```
+
+**The size of pointers**
+
+The size of a pointer is dependent upon the architecture the executable is compiled for -- a 32-bit executable uses 32-bit memory addresses -- consequently, a pointer on a 32-bit machine is 32 bits (4 bytes). With a 64-bit executable, a pointer would be 64 bits (8 bytes). Note that this is true regardless of the size of the object being pointed to:
+
+```c++
+#include <iostream>
+
+int main() // assume a 32-bit application
+{
+    char* chPtr{};        // chars are 1 byte
+    int* iPtr{};          // ints are usually 4 bytes
+    long double* ldPtr{}; // long doubles are usually 8 or 12 bytes
+
+    std::cout << sizeof(chPtr) << '\n'; // prints 4
+    std::cout << sizeof(iPtr) << '\n';  // prints 4
+    std::cout << sizeof(ldPtr) << '\n'; // prints 4
+
+    return 0;
+}
+```
+
+**Dangling pointers**
+
+Much like a dangling reference, a **dangling pointer** is a pointer that is holding the address of an object that is no longer valid.
+
+Dereferencing an invalid pointer will lead to undefined behavior. Any other use of an invalid pointer value is implementation-defined.
+
+
+
+### 12.8 Null pointers
+
+**Null pointers**
+
+A **null value** (often shortened to **null**) is a special value that means something has no value.
+
+When a pointer is holding a null value, it means the pointer is not pointing at anything. Such a pointer is called a **null pointer**.
+
+The easiest way to create a null pointer is to use value initialization:
+
+```c++
+int main()
+{
+    int* ptr {}; // ptr is now a null pointer, and is not holding an address
+
+    return 0;
+}
+```
+
+**The nullptr keyword**
+
+Much like the keywords `true` and `false` represent Boolean literal values, the **nullptr** represents a null pointer literal.
+
+We can use `nullptr` to explicitly initialize or assign a pointer a null value.
+
+```c++
+int main()
+{
+    int* ptr { nullptr }; // can use nullptr to initialize a pointer to be a null pointer
+
+    int value { 5 };
+    int* ptr2 { &value }; // ptr2 is a valid pointer
+    ptr2 = nullptr; // Can assign nullptr to make the pointer a null pointer
+
+    someFunction(nullptr); // we can also pass nullptr to a function that has a pointer parameter
+
+    return 0;
+}
+```
+
+**Dereferencing a null pointer results in undefined behavior**
+
+Much like dereferencing a dangling (or wild) pointer leads to undefined behavior, dereferencing a null pointer also leads to undefined behavior.
+
+**Checking for null pointers**
+
+We can use a conditional to test whether a pointer has value `nullptr` or not:
+
+```c++
+#include <iostream>
+
+int main()
+{
+    int x { 5 };
+    int* ptr { &x };
+
+    if (ptr == nullptr) // explicit test for equivalence
+        std::cout << "ptr is null\n";
+    else
+        std::cout << "ptr is non-null\n";
+
+    int* nullPtr {};
+    std::cout << "nullPtr is " << (nullPtr==nullptr ? "null\n" : "non-null\n"); // explicit test for equivalence
+
+    return 0;
+}
+```
+
+Pointers will implicitly convert to Boolean values: a null pointer converts to Boolean value `false`, and a non-null pointer converts to Boolean value `true`.
+
+The following program is equivalent to the prior one:
+
+```c++
+#include <iostream>
+
+int main()
+{
+    int x { 5 };
+    int* ptr { &x };
+
+    // pointers convert to Boolean false if they are null, and Boolean true if they are non-null
+    if (ptr) // implicit conversion to Boolean
+        std::cout << "ptr is non-null\n";
+    else
+        std::cout << "ptr is null\n";
+
+    int* nullPtr {};
+    std::cout << "nullPtr is " << (nullPtr ? "non-null\n" : "null\n"); // implicit conversion to Boolean
+
+    return 0;
+}
+```
+
+==Note==: 
+
+- Conditionals can only be used to differentiate null pointers from non-null pointers.
+- There is no convenient way to determine whether a non-null pointer is pointing to a valid object or dangling (pointing to an invalid object).
+
+**Use nullptr to avoid dangling pointers**
+
+Dereferencing a pointer that is either null or dangling will result in undefined behavior.
+
+We can easily avoid dereferencing a null pointer by using a conditional to ensure a pointer is non-null before trying to dereference it.
+
+But there is no way to detect whether a pointer is dangling, we need to avoid having any dangling pointers in our program in the first place. We do that by ensuring that any pointer that is not pointing at a valid object is set to `nullptr`.
+
+A pointer should either hold the address of a valid object, or be set to nullptr. That way we only need to test pointers for null, and can assume any non-null pointer is valid.
+
+```c++
+// Assume ptr is some pointer that may or may not be a null pointer
+if (ptr) // if ptr is not a null pointer
+    std::cout << *ptr << '\n'; // okay to dereference
+else
+    // do something else that doesn't involve dereferencing ptr (print an error message, do nothing at all, etc...)
+```
+
+**Legacy null pointer literals: 0 and NULL**
+
+In older code, there are two other literal values used instead of `nullptr`.
+
+1. The literal `0`:
+
+   In the context of a pointer, the literal `0` is specially defined to mean a null value, and is the only time you can assign an integral literal to a pointer.
+
+   ```c++
+   int main()
+   {
+       float* ptr { 0 };  // ptr is now a null pointer (for example only, don't do this)
+   
+       float* ptr2; // ptr2 is uninitialized
+       ptr2 = 0; // ptr2 is now a null pointer (for example only, don't do this)
+   
+       return 0;
+   }
+   ```
+
+   On modern architectures, the address `0` is typically used to represent a null pointer. However, this value is not guaranteed by the C++ standard, and some architectures use other values. The literal `0`, when used in the context of a null pointer, will be translated into whatever address the architecture uses to represent a null pointer.
+
+2. `NULL`:
+
+   Additionally, there is a preprocessor macro named `NULL` (defined in the <cstddef> header).  This macro is inherited from C.
+
+   ```c++
+   #include <cstddef> // for NULL
+   
+   int main()
+   {
+       double* ptr { NULL }; // ptr is a null pointer
+   
+       double* ptr2; // ptr2 is uninitialized
+       ptr2 = NULL; // ptr2 is now a null pointer
+   
+       return 0;
+   }
+   ```
+
+Both `0` and `NULL` should be avoided in modern C++ (use `nullptr` instead).
+
+**Favor references over pointers whenever possible**
+
+```c++
+int main()
+{
+    int* ptr { };
+
+    {
+        int x{ 5 };
+        ptr = &x; // assign the pointer to an object that will be destroyed (not possible with a reference)
+    } // ptr is now dangling and pointing to invalid object
+
+    if (ptr) // condition evaluates to true because ptr is not nullptr
+        std::cout << *ptr; // undefined behavior
+
+    return 0;
+}
+```
+
+Since references can’t be bound to null, we don’t have to worry about null references. And because references must be bound to a valid object upon creation and then can not be reseated, dangling references are harder to create.
+
+Because they are safer, references should be favored over pointers, unless the additional capabilities provided by pointers are required.
+
+
+
+### 12.9 Pointers and const
+
+With normal (non-const) pointers, we can change both what the pointer is pointing at (by assigning the pointer a new address to hold) or change the value at the address being held (by assigning a new value to the dereferenced pointer).
+
+We can't set a normal pointer to point at a const varibale.
+
+```c++
+int main()
+{
+    const int x { 5 }; // x is now const
+    int* ptr { &x };   // compile error: cannot convert from const int* to int*
+
+    return 0;
+}
+```
+
+**Pointer to const value**
+
+A **pointer to a const value** (sometimes called a `pointer to const` for short) is a (non-const) pointer that points to a constant value.
+
+To declare a pointer to a const value, use the `const` keyword before the pointer's data type:
+
+```c++
+int main()
+{
+    const int x{ 5 };
+    const int* ptr { &x }; // okay: ptr is pointing to a "const int"
+
+    *ptr = 6; // not allowed: we can't change a const value
+
+    return 0;
+}
+```
+
+However, because a pointer to const is not const itself (it just points to a const value), we can change what the pointer is pointing at by assigning the pointer a new address:
+
+```c++
+int main()
+{
+    const int x{ 5 };
+    const int* ptr { &x }; // ptr points to const int x
+
+    const int y{ 6 };
+    ptr = &y; // okay: ptr now points at const int y
+
+    return 0;
+}
+```
+
+Just like a reference to const, a pointer to const can point to non-const variables too.
+
+A pointer to const treats the value being pointed to as constant, regradless of whether the object at that address was initially defined as const or not:
+
+```c++
+int main()
+{
+    int x{ 5 }; // non-const
+    const int* ptr { &x }; // ptr points to a "const int"
+
+    *ptr = 6;  // not allowed: ptr points to a "const int" so we can't change the value through ptr
+    x = 6; // allowed: the value is still non-const when accessed through non-const identifier x
+
+    return 0;
+}
+```
+
+**Const pointers**
+
+We can also make a pointer itself constant. A **constant pointer** is a pointer whose address can not be changed after initialization.
+
+To decalre a const pointer, use the `const` keyword after the asterisk in the pointer declaration:
+
+```c++
+int main()
+{
+    int x{ 5 };
+    int* const ptr { &x }; // const after the asterisk means this is a const pointer
+
+    return 0;
+}
+```
+
+Just like a normal const variable, a const pointer must be initialized upon definition, and this value can't be changed via assignment:
+
+```c++
+int main()
+{
+    int x{ 5 };
+    int y{ 6 };
+
+    int* const ptr { &x }; // okay: the const pointer is initialized to the address of x
+    ptr = &y; // error: once initialized, a const pointer can not be changed.
+
+    return 0;
+}
+```
+
+However, because the *value* being pointed to is non-const, it is possible to change the value being pointed to via dereferencing the const pointer:
+
+```c++
+int main()
+{
+    int x{ 5 };
+    int* const ptr { &x }; // ptr will always point to x
+
+    *ptr = 6; // okay: the value being pointed to is non-const
+
+    return 0;
+}
+```
+
+**Const pointer to a const value**
+
+```c++
+int main()
+{
+    int value { 5 };
+    const int* const ptr { &value }; // a const pointer to a const value
+
+    return 0;
+}
+```
+
+A const pointer to a const value can not have its address changed, nor can the value it is pointing to be changed through the pointer. It can only be ereferenced to get the value it is pointing at.
+
+**Pointer and const recap**
+
+To summarize, only to remember 4 rules:
+
+1. A non-const pointer can be assigned another address to change what it is pointing at.
+2. A const pointer always point to the same address, and this address can not be changed.
+3. A pointer to a non-const value can change the value it is pointing to. These can not point to a const value.
+4. A pointer to a const value treats the value as const when accessed through the pointer, and thus can not change the value it is pointing to.  These can be pointed to const or non-const l-values (but not r-values, which don't have an address).
+
+Keeping the declaration syntax straight can be a bit challenging:
+
+- A `const` before the asterisk is associated with the  type being pointed to. Therefore, this is a pointer to a const value,  and the value cannot be modified through the pointer.
+- A `const` after the asterisk is associated with the pointer itself. Therefore, this pointer cannot be assigned a new address.
+
+```c++
+int main()
+{
+    int v{ 5 };
+
+    int* ptr0 { &v };             // points to an "int" but is not const itself, so this is a normal pointer.
+    const int* ptr1 { &v };       // points to a "const int" but is not const itself, so this is a pointer to a const value.
+    int* const ptr2 { &v };       // points to an "int" and is const itself, so this is a const pointer (to a non-const value).
+    const int* const ptr3 { &v }; // points to a "const int" and is const itself, so this is a const pointer to a const value.
+
+    // if the const is on the left side of the *, the const belongs to the value
+    // if the const is on the right side of the *, the const belongs to the pointer
+
+    return 0;
+}
+```
+
+
+
+### 12.10 Pass by address
+
+ **Pass by address**
+
+C++ provides a third way to pass values to a function (besides by reference or by value), called **pass by address.**
+
+With  **pass by address**, instead of providing an object as an argument, the caller provides an object's *address* (via a pointer).
+
+```c++
+void printByAddress(const std::string* ptr)
+{
+    std::cout << *ptr << '\n'; // print the value via the dereferenced pointer
+}
+```
+
+**Null checking**
+
+In most cases, it is more effective to test whether the function parameter is null as a precondition and handle the negative case immediately.
+
+```c++
+#include <iostream>
+
+void print(int* ptr)
+{
+    if (!ptr) // if ptr is a null pointer, early return back to the caller
+        return;
+
+    // if we reached this point, we can assume ptr is valid
+    // so no more testing or nesting required
+
+    std::cout << *ptr << '\n';
+}
+
+int main()
+{
+	int x{ 5 };
+
+	print(&x);
+	print(nullptr);
+
+	return 0;
+}
+```
+
+If a null pointer should never be passed to the function, an `assert` can be used instead (or also) (as asserts are intended to document things that should never happen):
+
+```c++
+#include <iostream>
+#include <cassert>
+
+void print(const int* ptr) // now a pointer to a const int
+{
+	assert(ptr); // fail the program in debug mode if a null pointer is passed (since this should never happen)
+
+	// (optionally) handle this as an error case in production mode so we don't crash if it does happen
+	if (!ptr)
+		return;
+
+	std::cout << *ptr << '\n';
+}
+
+int main()
+{
+	int x{ 5 };
+
+	print(&x);
+	print(nullptr);
+
+	return 0;
+}
+```
+
+**Prefer pass by (const) reference**
+
+Pass by const reference has a few advantages over pass by address/
+
+1. Because an object being passed by address must have an address, only lvalues can be passed by address (as rvalues don't have addresses). Pass by const reference is more flexible, as it can accept lvalues and rvalues:
+
+   ```c++
+   #include <iostream>
+   
+   void printByValue(int val) // The function parameter is a copy of the argument
+   {
+       std::cout << val << '\n'; // print the value via the copy
+   }
+   
+   void printByReference(const int& ref) // The function parameter is a reference that binds to the argument
+   {
+       std::cout << ref << '\n'; // print the value via the reference
+   }
+   
+   void printByAddress(const int* ptr) // The function parameter is a pointer that holds the address of the argument
+   {
+       std::cout << *ptr << '\n'; // print the value via the dereferenced pointer
+   }
+   
+   int main()
+   {
+       printByValue(5);     // valid (but makes a copy)
+       printByReference(5); // valid (because the parameter is a const reference)
+       printByAddress(&5);  // error: can't take address of r-value
+   
+       return 0;
+   }
+   ```
+
+2. The syntax for pass by reference is natural, as we can just pass in literals or objects. With pass by address, our code ends up littered with ampersands (&) and asterisks (*).
+
+Prefer pass by reference to pass by address unless you have a specific reason to use pass by address.
+
+**Pass by address for "optional" arguments**
+
+
+
+
 
 
 
